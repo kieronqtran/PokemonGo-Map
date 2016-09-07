@@ -18,3 +18,10 @@ script:
   - npm run build
   - npm run lint
   - nosetests
+
+deploy:
+  provider: scalingo
+  api_key: DDACW2ow62Iu7xlDzF7nR0qlq0bMsW93qWNdTkU1yTM
+  app: vnpokemap
+  on:
+    branch: master
