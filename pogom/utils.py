@@ -7,7 +7,6 @@ import os
 import json
 import logging
 import shutil
-import platform
 import pprint
 import time
 
@@ -43,9 +42,13 @@ def memoize(function):
 
 @memoize
 def get_args():
-    # fuck PEP8
-    defaultconfigpath = os.getenv('POGOMAP_CONFIG', os.path.join(os.path.dirname(__file__), '../config/config.ini'))
-    parser = configargparse.ArgParser(default_config_files=[defaultconfigpath], auto_env_var_prefix='POGOMAP_')
+    # pre-check to see if the -cf or --config flag is used on the command line
+    # if not, we'll use the env var or default value.  this prevents layering of
+    # config files, and handles missing config.ini as well
+    defaultconfigfiles = []
+    if '-cf' not in sys.argv and '--config' not in sys.argv:
+        defaultconfigfiles = [os.getenv('POGOMAP_CONFIG', os.path.join(os.path.dirname(__file__), '../config/config.ini'))]
+    parser = configargparse.ArgParser(default_config_files=defaultconfigfiles, auto_env_var_prefix='POGOMAP_')
     parser.add_argument('-cf', '--config', is_config_file=True, help='Configuration file')
     parser.add_argument('-a', '--auth-service', type=str.lower, action='append', default=[],
                         help='Auth Services, either one for all accounts or one per account: ptc or google. Defaults all to ptc.')
@@ -73,6 +76,14 @@ def get_args():
     parser.add_argument('-enc', '--encounter',
                         help='Start an encounter to gather IVs and moves',
                         action='store_true', default=False)
+    parser.add_argument('-cs', '--captcha-solving',
+                        help='Enables captcha solving',
+                        action='store_true', default=False)
+    parser.add_argument('-ck', '--captcha-key',
+                        help='2Captcha API key')
+    parser.add_argument('-cds', '--captcha-dsk',
+                        help='PokemonGo captcha data-sitekey',
+                        default="6LeeTScTAAAAADqvhqVMhPpr_vB9D364Ia-1dSgK")
     parser.add_argument('-ed', '--encounter-delay',
                         help='Time delay between encounter pokemon in scan threads',
                         type=float, default=1)
@@ -188,7 +199,6 @@ def get_args():
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument('-v', '--verbose', help='Show debug messages from PomemonGo-Map and pgoapi. Optionally specify file to log to.', nargs='?', const='nofile', default=False, metavar='filename.log')
     verbosity.add_argument('-vv', '--very-verbose', help='Like verbose, but show debug messages from all modules as well.  Optionally specify file to log to.', nargs='?', const='nofile', default=False, metavar='filename.log')
-    verbosity.add_argument('-d', '--debug', help='Deprecated, use -v or -vv instead.', action='store_true')
     parser.set_defaults(DEBUG=False)
 
     args = parser.parse_args()
@@ -420,61 +430,6 @@ def get_pokemon_rarity(pokemon_id):
 def get_pokemon_types(pokemon_id):
     pokemon_types = get_pokemon_data(pokemon_id)['types']
     return map(lambda x: {"type": i8ln(x['type']), "color": x['color']}, pokemon_types)
-
-
-def get_encryption_lib_path(args):
-    if args.encrypt_lib is not None:
-        lib_path = args.encrypt_lib
-
-        if not os.path.isfile(lib_path):
-            err = "Could not find manually specified encryption library {}".format(lib_path)
-            log.error(err)
-            raise Exception(err)
-    else:
-        # win32 doesn't mean necessarily 32 bits
-        if sys.platform == "win32" or sys.platform == "cygwin":
-            if platform.architecture()[0] == '64bit':
-                lib_name = "encrypt64bit.dll"
-            else:
-                lib_name = "encrypt32bit.dll"
-
-        elif sys.platform == "darwin":
-            lib_name = "libencrypt-osx-64.so"
-
-        elif os.uname()[4].startswith("arm") and platform.architecture()[0] == '32bit':
-            lib_name = "libencrypt-linux-arm-32.so"
-
-        elif os.uname()[4].startswith("aarch64") and platform.architecture()[0] == '64bit':
-            lib_name = "libencrypt-linux-arm-64.so"
-
-        elif sys.platform.startswith('linux'):
-            if "centos" in platform.platform():
-                if platform.architecture()[0] == '64bit':
-                    lib_name = "libencrypt-centos-x86-64.so"
-                else:
-                    lib_name = "libencrypt-linux-x86-32.so"
-            else:
-                if platform.architecture()[0] == '64bit':
-                    lib_name = "libencrypt-linux-x86-64.so"
-                else:
-                    lib_name = "libencrypt-linux-x86-32.so"
-
-        elif sys.platform.startswith('freebsd'):
-            lib_name = "libencrypt-freebsd-64.so"
-
-        else:
-            err = "Unexpected/unsupported platform '{}'. If you have encrypt lib compiled for your platform, specify its location with '--encrypt-lib' parameter".format(sys.platform)
-            log.error(err)
-            raise Exception(err)
-
-        lib_path = os.path.join(os.path.dirname(__file__), "libencrypt", lib_name)
-
-        if not os.path.isfile(lib_path):
-            err = "Could not find {} encryption library {}".format(sys.platform, lib_path)
-            log.error(err)
-            raise Exception(err)
-
-    return lib_path
 
 
 class Timer():
